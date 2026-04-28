@@ -35,16 +35,27 @@ All generated bpy code must:
 - Include `bpy.context.scene.unit_settings.length_unit` awareness (real-world scale)
 - Clean up selection state after operations (`bpy.ops.object.select_all(action='DESELECT')`)
 
+### 5. Data Preservation & Communication Mandate
+**CRITICAL RULE**: Never use destructive operators (like `bpy.ops.object.delete()`) on existing user assets unless explicitly requested. 
+- If the user asks for a "new scene structure" or "better organization", **move** existing objects into the appropriate AAA collections (`GEO_`, `LGT_`, etc.).
+- **COMMUNICATION MANDATE**: Before or during any scene-wide operation, you MUST explicitly state:
+    1. **What is being affected** (e.g., "I've detected 3 meshes and 1 light...").
+    2. **What the change is and its impact** (e.g., "...moving them to GEO_Architecture to fix export hierarchy for UE5").
+    3. **Technical justification** (e.g., "This prevents naming collisions and ensures downstream compatibility").
+- Always check `get_scene_info` first to identify what needs to be preserved.
+
 ---
 
 ## Workflow: Read Scene First
 
-Before doing anything in Blender, **always call `get_scene_info`** to understand what's already in the scene. Never assume an empty scene.
+Before doing anything in Blender, **always call `get_scene_info`** to understand what's already in the scene. 
 
-```python
-# Always start with scene context
-# blender:get_scene_info → analyze → then execute_blender_code
-```
+**Categorization Logic**:
+- Meshes with "Wall", "Floor", "Ceiling" → `GEO_Architecture`
+- Meshes with "Prop", "Hero", "Detail" → `GEO_Props`
+- Lights → `LGT_Setup`
+- Cameras → `CAM_Setup`
+
 
 ---
 

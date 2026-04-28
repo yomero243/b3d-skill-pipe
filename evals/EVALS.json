@@ -1,0 +1,19 @@
+{
+  "skill_name": "b3d-skill-pipe",
+  "version": "1.0.0",
+  "evals": [
+    {
+      "id": "AAA_SCENE_INIT",
+      "prompt": "Initialize a high-end production scene for 'Sector_Alpha'. Required: Full collection hierarchy (GEO, LGT, CAM, REF), metric units (1 unit = 1m), and viewport clipping set to 0.01m to 10000m.",
+      "expected_output": "Scene 'ENV_Sector_Alpha' created with standard collections and unit/viewport calibration.",
+      "requires_blender": true
+    },
+    {
+      "id": "AAA_MESH_SANITY",
+      "prompt": "I have a mesh with artifacts. Run a full technical sanitization: merge doubles, recalculate normals to outside, and clear custom split normals. Then, validate it has a non-overlapping UV1 lightmap on channel 1.",
+      "expected_output": "Sanitized mesh with 0 double vertices and a valid UV1_Lightmap layer.",
+      "requires_blender": true,
+      "files": ["evals/files/corrupted_mesh.blend"]
+    }
+  ]
+}

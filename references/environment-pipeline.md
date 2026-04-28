@@ -178,11 +178,60 @@ def export_for_ue5(filepath, selected_only=True):
 
 ---
 
-## Common Topology Rules
+## Technical Mesh Sanitization (The "Zero-Artifact" Rule)
 
-- **No n-gons** on curved or deforming surfaces (quads only)
-- **N-gons OK** on flat, non-deforming faces (floor panels, walls)
-- **Edge loops** must support silhouette at LOD0 distance
-- **Bevels** on hard edges: 1–2 segment bevel, avoid support loops spam
-- **Backface culling** enabled: no interior-only geometry
-- **Manifold mesh**: no open edges on solid props (watertight)
+Before any asset leaves Blender, it MUST pass this technical audit. Failure to do so causes "exploding" bakes in Substance Painter.
+
+### Automated Cleanup Script
+```python
+import bpy
+
+def sanitize_mesh_for_production(obj):
+    """
+    AAA Technical Pass:
+    1. Merge double vertices
+    2. Recalculate Normals (Outside)
+    3. Clear Custom Split Normals Data
+    4. Remove Degenerate Mesh Data (Zero-area faces)
+    """
+    if obj.type != 'MESH': return
+
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    
+    # 1. Merge Doubles (default distance 0.0001)
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.remove_doubles()
+    
+    # 2. Fix Normals
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    
+    # 3. Cleanup Degenerate geometry
+    bpy.ops.mesh.cleanup_degenerate()
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # 4. Clear potential data corruption from external imports
+    if obj.data.has_custom_normals:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+        
+    print(f"[CLEANUP] {obj.name} is now production-clean.")
+
+# Run on selection
+for obj in bpy.context.selected_objects:
+    sanitize_mesh_for_production(obj)
+```
+
+---
+
+## Substance Painter Export Strategy
+
+### Material ID / Color ID Prep
+- Substance uses **Material Slots** or **Vertex Colors** to define masking.
+- **Rule**: If two parts of a mesh are different materials (e.g., Metal and Rubber) but share a UV tile, use different Material Slots for easy ID masking in Substance.
+
+### The "High-to-Low" Naming (Baking)
+If you are doing a high-poly bake in Substance:
+- Low Poly Name: `SM_Asset_LOW`
+- High Poly Name: `SM_Asset_HIGH`
+- *Substance will match by suffix, preventing "projection bleeding" from adjacent parts.*
