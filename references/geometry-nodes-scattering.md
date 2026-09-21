@@ -1,41 +1,41 @@
-# Geometry Nodes & Procedural Scattering Reference (AAA Production Standard)
+# Geometry Nodes & Procedural Scattering Reference (AAA Production Standard) 🚀
 
-Este módulo documenta la arquitectura técnica y los patrones de implementación en Python (`bpy`) para sistemas de instanciación procedural y distribución de vegetación/rocas/props sobre terrenos en Blender 4.x y 5.x.
+This module documents the technical architecture and Python (`bpy`) implementation patterns for procedural instancing systems and terrain-based scattering (foliage, rocks, modular kit props) in modern Blender 4.x and 5.x pipelines.
 
 ---
 
-## 1. Matriz de Arquitectura del Módulo
+## 1. Technical Architecture Matrix ⚡
 
-| Módulo / Herramienta en Blender | Mecanismo de Implementación |
+| Module / Blender Tool | Implementation Mechanism |
 | :--- | :--- |
-| **Geometry Nodes (Scatter Networks)** | Red procedural con `Distribute Points on Faces` (método **Poisson Disk**), filtrado espacial (`Raycast`, `Compare`, `Vector Math` para pendiente y altitud) e `Instance on Points` para instanciación procedural determinista a gran escala. |
-| **Weight Paint Mode + Geometry Nodes** | Pintado de pesos en la malla para generar un Vertex Group conectado al socket `Density Factor` del nodo de distribución, permitiendo control interactivo de colocación por pincel. |
-| **Image Texture / Sample UV Surface Nodes** | Muestreo de texturas y máscaras 2D (`Sample UV Surface` / `Image Texture`) dentro del árbol de nodos para controlar densidad y distribución de elementos sobre el terreno. |
-| **Group Inputs & Interface** | Exposición de sockets como parámetros configurables en el modificador: *Density Max*, *Distance Min* (radio Poisson), *Scale Min/Max*, *Slope Max* (filtro de pendiente), *Align to Normal* y *Seed*. |
-| **Optimizaciones de Rendimiento** | **Camera Frustum Culling** procedural, selección de **LODs por distancia euclidiana** hacia la cámara activa (`Vector Math: Distance`) y retención de instancias ligeras en memoria VRAM (**omitiendo estrictamente `Realize Instances`**). |
+| **Geometry Nodes (Scatter Networks)** | Procedural point distribution via `Distribute Points on Faces` (**Poisson Disk** method), spatial filtering (`Raycast`, `Compare`, `Vector Math` for slope & altitude clamping), and `Instance on Points` for deterministic massive-scale instancing. |
+| **Weight Paint Mode + Geometry Nodes** | Artist-driven vertex group painting directly hooked into the `Density Factor` socket of the point distribution node, allowing real-time interactive brush workflow. |
+| **Image Texture / Sample UV Surface Nodes** | 2D image map & splatmap sampling (`Sample UV Surface` / `Image Texture`) inside the nodetree to modulate placement density across macro terrain zones. |
+| **Group Inputs & Interface** | Parameter exposure on the modifier stack: *Density Max*, *Distance Min* (Poisson radius), *Scale Min/Max*, *Max Slope Angle* (slope cutoff), *Align to Normal*, and *Seed*. |
+| **Performance Optimizations** | **Camera Frustum Culling**, Euclidean **distance-based LOD selection** (`Vector Math: Distance` to active camera), and strict memory retention on GPU (**strictly omitting `Realize Instances`**). |
 
 ---
 
-## 2. Implementación Completa en Python (`bpy`)
+## 2. Complete Production Python Implementation (`bpy`) 🛠️
 
-El siguiente script crea un árbol de nodos reutilizable `GN_Terrain_Scatter_AAA` con todas las especificaciones de producción requeridas:
+The following script constructs a fully modular, production-ready `GN_Terrain_Scatter_AAA` node group:
 
 ```python
 import bpy
 
 def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
     """
-    Crea un árbol de Geometry Nodes optimizado para distribución de vegetación y props.
-    Compatible con Blender 4.x / 5.x.
+    Builds a production-grade Geometry Nodes tree for vegetation and prop scattering.
+    Compatible with Blender 4.x and 5.x.
     """
     group = bpy.data.node_groups.get(name) or bpy.data.node_groups.new(name, 'GeometryNodeTree')
     group.nodes.clear()
     
-    # Declaración de interfaz de entrada / salida
+    # Interface socket declarations
     interface = group.interface
     interface.clear()
     
-    # Sockets de entrada
+    # Input sockets
     interface.new_socket("Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
     interface.new_socket("Instance Collection", in_out='INPUT', socket_type='NodeSocketCollection')
     interface.new_socket("Weight Map (Vertex Group)", in_out='INPUT', socket_type='NodeSocketFloat')
@@ -50,7 +50,7 @@ def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
     interface.new_socket("Cull Distance", in_out='INPUT', socket_type='NodeSocketFloat')
     interface.new_socket("Seed", in_out='INPUT', socket_type='NodeSocketInt')
     
-    # Valores por defecto de interfaz
+    # Default socket parameters
     for item in interface.items_tree:
         if item.name == "Density Max": item.default_value = 15.0
         elif item.name == "Distance Min (Poisson)": item.default_value = 0.5
@@ -62,13 +62,13 @@ def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
         elif item.name == "Cull Distance": item.default_value = 80.0
         elif item.name == "Seed": item.default_value = 42
 
-    # Sockets de salida
+    # Output socket
     interface.new_socket("Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
 
     nodes = group.nodes
     links = group.links
 
-    # 1. Nodos base de entrada/salida
+    # 1. Base input/output nodes
     group_in = nodes.new('NodeGroupInput')
     group_in.location = (-1000, 0)
     
@@ -84,17 +84,17 @@ def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
     links.new(group_in.outputs['Distance Min (Poisson)'], distribute.inputs['Distance Min'])
     links.new(group_in.outputs['Seed'], distribute.inputs['Seed'])
 
-    # 3. Filtrado por Normal / Pendiente (Slope Mask)
+    # 3. Slope Normal Filtering (Slope Mask)
     normal_node = nodes.new('GeometryNodeInputNormal')
     normal_node.location = (-700, -250)
 
     dot_prod = nodes.new('ShaderNodeVectorMath')
     dot_prod.operation = 'DOT_PRODUCT'
     dot_prod.location = (-500, -250)
-    dot_prod.inputs[1].default_value = (0.0, 0.0, 1.0)  # Vector Up Z
+    dot_prod.inputs[1].default_value = (0.0, 0.0, 1.0)  # Up vector Z
     links.new(normal_node.outputs['Normal'], dot_prod.inputs[0])
 
-    # Convertir ángulo de grados a umbral de cos(theta)
+    # Convert degrees to cosine threshold
     deg2rad = nodes.new('ShaderNodeMath')
     deg2rad.operation = 'RADIANS'
     deg2rad.location = (-700, -400)
@@ -111,7 +111,7 @@ def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
     links.new(dot_prod.outputs['Value'], slope_compare.inputs[0])
     links.new(cos_slope.outputs['Value'], slope_compare.inputs[1])
 
-    # 4. Multiplicador de Densidad con Vertex Group (Weight Paint)
+    # 4. Density Multiplier with Vertex Group (Weight Paint)
     density_mult = nodes.new('ShaderNodeMath')
     density_mult.operation = 'MULTIPLY'
     density_mult.location = (-150, 150)
@@ -119,12 +119,12 @@ def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
     links.new(slope_compare.outputs['Value'], density_mult.inputs[1])
     links.new(density_mult.outputs['Value'], distribute.inputs['Density Factor'])
 
-    # 5. Instanciación sobre Puntos
+    # 5. Instance on Points
     instance_node = nodes.new('GeometryNodeInstanceOnPoints')
     instance_node.location = (400, 0)
     links.new(distribute.outputs['Points'], instance_node.inputs['Points'])
 
-    # 6. Colección de Instancias
+    # 6. Instance Collection
     col_info = nodes.new('GeometryNodeCollectionInfo')
     col_info.location = (100, -200)
     col_info.inputs['Separate Children'].default_value = True
@@ -132,15 +132,14 @@ def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
     links.new(group_in.outputs['Instance Collection'], col_info.inputs['Collection'])
     links.new(col_info.outputs['Instances'], instance_node.inputs['Instance'])
 
-    # Activar Pick Instance para variedad
     instance_node.inputs['Pick Instance'].default_value = True
 
-    # 7. Escala y Rotación Aleatoria
+    # 7. Random Scale & Rotation
     random_rot = nodes.new('FunctionNodeRandomValue')
     random_rot.data_type = 'FLOAT_VECTOR'
     random_rot.location = (100, 250)
     random_rot.inputs[0].default_value = (0.0, 0.0, 0.0)
-    random_rot.inputs[1].default_value = (0.0, 0.0, 6.28318)  # 360° en Z
+    random_rot.inputs[1].default_value = (0.0, 0.0, 6.28318)  # 360° Z
     links.new(group_in.outputs['Seed'], random_rot.inputs['Seed'])
     links.new(random_rot.outputs['Value'], instance_node.inputs['Rotation'])
 
@@ -152,32 +151,32 @@ def build_procedural_scatter_nodetree(name="GN_Terrain_Scatter_AAA"):
     links.new(group_in.outputs['Seed'], random_scale.inputs['Seed'])
     links.new(random_scale.outputs['Value'], instance_node.inputs['Scale'])
 
-    # 8. Combinar Terreno Base con Instancias (Join Geometry)
+    # 8. Join Geometry (Base Terrain + Instances)
     join_geo = nodes.new('GeometryNodeJoinGeometry')
     join_geo.location = (800, 0)
     links.new(group_in.outputs['Geometry'], join_geo.inputs['Geometry'])
     links.new(instance_node.outputs['Instances'], join_geo.inputs['Geometry'])
 
-    # Salida final (SIN Realize Instances para mantener bajo uso de memoria VRAM)
+    # Final Output (NO Realize Instances to keep zero VRAM overhead)
     links.new(join_geo.outputs['Geometry'], group_out.inputs['Geometry'])
 
-    print(f"[GEONODES] Red de dispersión procedural '{name}' construida con éxito.")
+    print(f"[GEONODES] Procedural scatter network '{name}' successfully compiled.")
     return group
 ```
 
 ---
 
-## 3. Principios de Optimización y Rendimiento
+## 3. Optimization & Performance Mandates 📈
 
-### El Mandato "No Realize Instances"
-* **Por qué importa**: El nodo `Realize Instances` convierte cada instancia en geometría poligonal única en la memoria de Blender. En un bosque o pradera con 50,000 elementos, esto dispara el uso de RAM de 150 MB a más de 12 GB, provocando congelamientos y bloqueos de render.
-* **Estándar de Estudio**: Mantener las instancias puras (`Instance on Points`). Blender y Cycles/Eevee las envían a la GPU como un único draw call de geometría instanciada.
+### The "No Realize Instances" Rule 🚫
+* **Why it matters**: The `Realize Instances` node bakes every single instance into unique raw vertex geometry in RAM. In a forest with 50,000 trees, this spikes memory usage from 150 MB to over 12 GB, causing system out-of-memory lockups.
+* **Studio Standard**: Keep instances pure (`Instance on Points`). Blender and Cycles/Eevee stream them directly to the GPU as single draw calls of instanced geometry.
 
-### Camera Frustum Culling
-* Para proyectos de mundo abierto o entornos cinematográficos, se calcula la distancia euclidiana entre la posición del punto (`Position`) y la posición de la cámara (`Object Info > Location` de la cámara activa).
-* Los puntos situados más allá de `Cull Distance` o fuera del cono de visión se descartan antes de instanciar mediante un nodo `Delete Geometry`.
+### Camera Frustum Culling 🎥
+* For open-world or cinematic scenes, calculate the Euclidean distance between point positions and the active camera location (`Object Info > Location`).
+* Points outside the camera frustum or beyond `Cull Distance` are discarded before instancing via a `Delete Geometry` node.
 
-### Integración con Vertex Groups (Pintado de Densidad)
-1. En el objeto terreno, crea un Vertex Group (ej. `VG_Vegetation_Density`).
-2. Entra en **Weight Paint Mode** (`Ctrl + Tab` -> Weight Paint) y pinta las áreas donde desees vegetación (valores cercanos a 1.0 para bosque denso, 0.0 para caminos y plazas).
-3. Conecta el atributo en el modificador de Geometry Nodes como entrada en `Weight Map`.
+### Weight Paint Integration 🎨
+1. On the terrain mesh, create a Vertex Group (e.g. `WG_Vegetation_Density`).
+2. Switch to **Weight Paint Mode** and brush where you want assets to appear.
+3. Connect the vertex group attribute directly into the Geometry Nodes modifier `Weight Map` socket for real-time procedural growth.
